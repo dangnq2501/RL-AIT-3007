@@ -1,5 +1,6 @@
 from magent2.environments import battle_v4
-from torch_model import QNetwork
+from models.torch_model import QNetwork
+from models.functional_model import FunctionalPolicyAgent
 import torch
 import numpy as np
 
@@ -24,7 +25,21 @@ def eval():
         torch.load("red.pt", weights_only=True, map_location="cpu")
     )
     q_network.to(device)
-
+    action_space_size = 21  
+    input_dim = 13 * 13 * 5
+    f_agent = FunctionalPolicyAgent(action_space_size, input_dim)
+    f_agent.q_network.load_state_dict(
+        torch.load("trained_agent.pth", weights_only=True, map_location="cpu")
+    )
+    f_agent.to(device)
+    f_agent.eval()
+    
+    def functional_policy(env, agent, obs):
+        observation_tensor = torch.tensor(obs, dtype=torch.float32).flatten()
+        
+        action = f_agent.select_action(observation_tensor, eval_mode=True)
+        return action
+    
     def pretrain_policy(env, agent, obs):
         observation = (
             torch.Tensor(obs).float().permute([2, 0, 1]).unsqueeze(0).to(device)
@@ -91,7 +106,7 @@ def eval():
     print("Eval with random policy")
     print(
         run_eval(
-            env=env, red_policy=random_policy, blue_policy=random_policy, n_episode=30
+            env=env, red_policy=random_policy, blue_policy=functional_policy, n_episode=30
         )
     )
     print("=" * 20)
@@ -99,7 +114,7 @@ def eval():
     print("Eval with trained policy")
     print(
         run_eval(
-            env=env, red_policy=pretrain_policy, blue_policy=random_policy, n_episode=30
+            env=env, red_policy=pretrain_policy, blue_policy=functional_policy, n_episode=30
         )
     )
     print("=" * 20)
