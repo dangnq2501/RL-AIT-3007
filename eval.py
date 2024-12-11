@@ -3,7 +3,7 @@ from models.torch_model import QNetwork
 from models.functional_model import FunctionalPolicyAgent
 import torch
 import numpy as np
-
+from models.kaggle_notebook import FunctionalPolicyAgent as BattleAgent
 try:
     from tqdm import tqdm
 except ImportError:
@@ -27,15 +27,15 @@ def eval():
     q_network.to(device)
     action_space_size = 21  
     input_dim = 13 * 13 * 5
-    f_agent = FunctionalPolicyAgent(action_space_size, input_dim)
-    f_agent.q_network.load_state_dict(
-        torch.load("trained_agent.pth", weights_only=True, map_location="cpu")
+    f_agent = BattleAgent(action_space_size)
+    f_agent.load_state_dict(
+        torch.load("blue_trained_agent.pth", weights_only=True, map_location="cpu")
     )
     f_agent.to(device)
     f_agent.eval()
     
     def functional_policy(env, agent, obs):
-        observation_tensor = torch.tensor(obs, dtype=torch.float32).flatten()
+        observation_tensor = torch.tensor(obs, dtype=torch.float32)
         
         action = f_agent.select_action(observation_tensor, eval_mode=True)
         return action
@@ -52,12 +52,15 @@ def eval():
         red_win, blue_win = [], []
         red_tot_rw, blue_tot_rw = [], []
         n_agent_each_team = len(env.env.action_spaces) // 2
-
+        cnt = 0
         for _ in tqdm(range(n_episode)):
             env.reset()
             n_dead = {"red": 0, "blue": 0}
             red_reward, blue_reward = 0, 0
             who_loses = None
+            blue_agents = [an for an in env.agents if an.startswith("blue")]
+            red_agents = [an for an in env.agents if an.startswith("red")]
+            agent_alive = {an: True for an in env.agents}
 
             for agent in env.agent_iter():
                 observation, reward, termination, truncation, info = env.last()
@@ -70,6 +73,9 @@ def eval():
                 if env.unwrapped.frames >= max_cycles and who_loses is None:
                     who_loses = "red" if n_dead["red"] > n_dead["blue"] else "draw"
                     who_loses = "blue" if n_dead["red"] < n_dead["blue"] else who_loses
+
+                if termination:
+                    agent_alive[agent] = False
 
                 if termination or truncation:
                     action = None  # this agent has died
@@ -88,9 +94,10 @@ def eval():
                         action = blue_policy(env, agent, observation)
 
                 env.step(action)
-
-            red_win.append(who_loses == "blue")
-            blue_win.append(who_loses == "red")
+            blue_alive_count = sum(agent_alive[an] for an in blue_agents)
+            red_alive_count = sum(agent_alive[an] for an in red_agents)
+            red_win.append(blue_alive_count < red_alive_count)
+            blue_win.append(blue_alive_count > red_alive_count)
 
             red_tot_rw.append(red_reward / n_agent_each_team)
             blue_tot_rw.append(blue_reward / n_agent_each_team)

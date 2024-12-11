@@ -53,8 +53,7 @@ if __name__ == "__main__":
     for agent in env.agent_iter():
 
         observation, reward, termination, truncation, info = env.last()
-        print("Observation shape: ", observation.shape)
-        print("Reward : ", reward)
+
         if termination or truncation:
             action = None  # this agent has died
         else:
