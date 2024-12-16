@@ -7,6 +7,7 @@ import os
 import cv2
 from models.ppo_model import PPOAgentWithLightning
 from models.functional_model import FunctionalPolicyAgent
+from models.final_torch_model import QNetwork as FinalQNetwork
 try:
     from tqdm import tqdm
 except ImportError:
@@ -20,25 +21,31 @@ def eval():
 
     def random_policy(env, agent, obs):
         return env.action_space(agent).sample()
-
-    q_network = QNetwork(
+    
+    q_network = FinalQNetwork(
         env.observation_space("red_0").shape, env.action_space("red_0").n
     )
     q_network.load_state_dict(
-        torch.load("red.pt", weights_only=True, map_location="cpu")
+        torch.load("parameters/red_final.pt", weights_only=True, map_location="cpu")
     )
     q_network.to(device)
+    q_network.eval()
     action_space_size = 21  
-    input_dim = 13 * 13 * 5
-    input_channels = 5
-    input_size = 13
+
     f_agent = FunctionalPolicyAgent(action_space_size, embed_dim=5, height=13, width=13)
     f_agent.load_state_dict(
-        torch.load("blue_agent.pth", weights_only=True, map_location="cpu")
+        torch.load("parameters/blue_agent_18.pth", weights_only=True, map_location="cpu")
     )
     f_agent.to(device)
     f_agent.eval()
-    
+    def final_pretrain_policy(env, agent, obs):
+        observation = (
+            torch.Tensor(obs).float().permute([2, 0, 1]).unsqueeze(0).to(device)
+        )
+        with torch.no_grad():
+            q_values = q_network(observation)
+        return torch.argmax(q_values, dim=1).cpu().numpy()[0]
+
     def functional_policy(env, agent, obs):
         obs_tensor = torch.tensor(obs, dtype=torch.float32)
         action = f_agent.select_action(obs_tensor)
@@ -52,51 +59,33 @@ def eval():
             q_values = q_network(observation)
         return torch.argmax(q_values, dim=1).cpu().numpy()[0]
 
+
     def run_eval(env, red_policy, blue_policy, n_episode: int = 100):
-        vid_dir = "video"
-        os.makedirs(vid_dir, exist_ok=True)
-        fps = 35
-        
         red_win, blue_win = [], []
         red_tot_rw, blue_tot_rw = [], []
         n_agent_each_team = len(env.env.action_spaces) // 2
+        fps = 35
         cnt = 0
-        
         for _ in tqdm(range(n_episode)):
             env.reset()
-            frames = []
-            n_dead = {"red": 0, "blue": 0}
+            n_kill = {"red": 0, "blue": 0}
             red_reward, blue_reward = 0, 0
-            who_loses = None
-            blue_agents = [an for an in env.agents if an.startswith("blue")]
-            red_agents = [an for an in env.agents if an.startswith("red")]
-            agent_alive = {an: True for an in env.agents}
-
+            frames = []
+            idx = 0
             for agent in env.agent_iter():
                 observation, reward, termination, truncation, info = env.last()
                 agent_team = agent.split("_")[0]
+                # print(agent)
+                n_kill[agent_team] += (
+                    reward > 4.5
+                )  # This assumes default reward settups
                 if agent_team == "red":
                     red_reward += reward
                 else:
                     blue_reward += reward
 
-                if env.unwrapped.frames >= max_cycles and who_loses is None:
-                    who_loses = "red" if n_dead["red"] > n_dead["blue"] else "draw"
-                    who_loses = "blue" if n_dead["red"] < n_dead["blue"] else who_loses
-
-                if termination:
-                    agent_alive[agent] = False
-
                 if termination or truncation:
                     action = None  # this agent has died
-                    n_dead[agent_team] = n_dead[agent_team] + 1
-
-                    if (
-                        n_dead[agent_team] == n_agent_each_team
-                        and who_loses
-                        is None  # all agents are terminated at the end of episodes
-                    ):
-                        who_loses = agent_team
                 else:
                     if agent_team == "red":
                         action = red_policy(env, agent, observation)
@@ -106,11 +95,14 @@ def eval():
                 env.step(action)
                 if agent == "red_0":
                     frames.append(env.render())
+                    idx += 1
+                    print(f"Cycle id: {idx}")
+                    print(f"Red: {n_kill["red"]} vs Blue: {n_kill["blue"]}")
             # print(len(frames))
             cnt += 1
             height, width, _ = frames[0].shape
             out = cv2.VideoWriter(
-                os.path.join(vid_dir, f"test_{cnt}.mp4"),
+                os.path.join("video", f"test_18_{cnt}.mp4"),
                 cv2.VideoWriter_fourcc(*"mp4v"),
                 fps,
                 (width, height),
@@ -120,11 +112,11 @@ def eval():
                 out.write(frame_bgr)
             out.release()
             frames = []
-            blue_alive_count = sum(agent_alive[an] for an in blue_agents)
-            red_alive_count = sum(agent_alive[an] for an in red_agents)
-            print(blue_alive_count, red_alive_count)
-            red_win.append(blue_alive_count < red_alive_count)
-            blue_win.append(blue_alive_count > red_alive_count)
+
+            who_wins = "red" if n_kill["red"] >= n_kill["blue"] + 5 else "draw"
+            who_wins = "blue" if n_kill["red"] + 5 <= n_kill["blue"] else who_wins
+            red_win.append(who_wins == "red")
+            blue_win.append(who_wins == "blue")
 
             red_tot_rw.append(red_reward / n_agent_each_team)
             blue_tot_rw.append(blue_reward / n_agent_each_team)
@@ -136,19 +128,11 @@ def eval():
             "average_rewards_blue": np.mean(blue_tot_rw),
         }
 
-    print("=" * 20)
-    print("Eval with random policy")
-    print(
-        run_eval(
-            env=env, red_policy=random_policy, blue_policy=functional_policy, n_episode=10
-        )
-    )
-    print("=" * 20)
 
-    print("Eval with trained policy")
+    print("Eval with final policy")
     print(
         run_eval(
-            env=env, red_policy=pretrain_policy, blue_policy=functional_policy, n_episode=10
+            env=env, red_policy=final_pretrain_policy, blue_policy=functional_policy, n_episode=10
         )
     )
     print("=" * 20)
