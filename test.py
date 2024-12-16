@@ -6,7 +6,7 @@ import numpy as np
 import os
 import cv2
 from models.ppo_model import PPOAgentWithLightning
-from models.kaggle_notebook import FunctionalPolicyAgent as BattleAgent
+from models.functional_model import FunctionalPolicyAgent
 try:
     from tqdm import tqdm
 except ImportError:
@@ -30,43 +30,18 @@ def eval():
     q_network.to(device)
     action_space_size = 21  
     input_dim = 13 * 13 * 5
-    f_agent = BattleAgent(action_space_size)
+    input_channels = 5
+    input_size = 13
+    f_agent = FunctionalPolicyAgent(action_space_size, embed_dim=5, height=13, width=13)
     f_agent.load_state_dict(
-        torch.load("blue_trained_agent.pth", weights_only=True, map_location="cpu")
+        torch.load("blue_agent.pth", weights_only=True, map_location="cpu")
     )
     f_agent.to(device)
     f_agent.eval()
-
-    input_channels = 5
-    input_size = 13
-    action_space_size = 21
-    lr = 3e-4
-    gamma = 0.99
-    clip_epsilon = 0.2
-    replay_buffer = []
-    max_buffer_size = 10000
-    batch_size = 256
-    n_episodes = 40
-
-    ppo_agent = PPOAgentWithLightning.load_from_checkpoint(
-        "epoch=39-step=1600.ckpt",
-        input_channels=input_channels,
-        input_size=input_size,
-        action_space_size=action_space_size,
-        map_location=torch.device("cpu")
-    )    
-    ppo_agent.eval()
-    def ppo_policy(env, agent, obs):
-        observation_tensor = torch.tensor(obs, dtype=torch.float32).squeeze(0)
-        
-        policy, _ = ppo_agent(observation_tensor)
-        action = torch.argmax(policy, dim=-1).item()
-        return action
-            
+    
     def functional_policy(env, agent, obs):
-        observation_tensor = torch.tensor(obs, dtype=torch.float32)
-        
-        action = f_agent.select_action(observation_tensor, eval_mode=True)
+        obs_tensor = torch.tensor(obs, dtype=torch.float32)
+        action = f_agent.select_action(obs_tensor)
         return action
     
     def pretrain_policy(env, agent, obs):
@@ -131,7 +106,7 @@ def eval():
                 env.step(action)
                 if agent == "red_0":
                     frames.append(env.render())
-            print(len(frames))
+            # print(len(frames))
             cnt += 1
             height, width, _ = frames[0].shape
             out = cv2.VideoWriter(
@@ -147,6 +122,7 @@ def eval():
             frames = []
             blue_alive_count = sum(agent_alive[an] for an in blue_agents)
             red_alive_count = sum(agent_alive[an] for an in red_agents)
+            print(blue_alive_count, red_alive_count)
             red_win.append(blue_alive_count < red_alive_count)
             blue_win.append(blue_alive_count > red_alive_count)
 

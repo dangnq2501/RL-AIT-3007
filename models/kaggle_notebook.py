@@ -10,77 +10,106 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(out_channels)
 
-class SpatialCNN(nn.Module):
-    def __init__(self, in_channels=5, out_channels=32):
-        super(SpatialCNN, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, 16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(16, out_channels, kernel_size=3, padding=1),
-            nn.ReLU()
-        )
+        if in_channels != out_channels or stride != 1:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride),
+                nn.BatchNorm2d(out_channels)
+            )
+        else:
+            self.shortcut = nn.Identity()
+
     def forward(self, x):
-        # x: (B, C, H, W)
-        return self.conv(x)  # (B, out_channels, H, W)
+        identity = self.shortcut(x)
+        out = self.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += identity
+        out = self.relu(out)
+        return out
 
-class FunctionalPolicyAgent(pl.LightningModule):
-    def __init__(self, action_space_size, embed_dim=5, height=13, width=13, hidden_dim=256, dropout=0.3, epsilon=0.2):
-        super(FunctionalPolicyAgent, self).__init__()
-        self.action_space_size = action_space_size
+class QNetwork(pl.LightningModule):
+    def __init__(self, observation_shape=(13,13,5), action_shape=21, epsilon=0.1):
+        super().__init__()
+        self.save_hyperparameters()
+        self.action_shape = action_shape
         self.epsilon = epsilon
-        self.height = height
-        self.width = width
-        self.hidden_dim = hidden_dim
-        self.dropout = dropout
+        C = observation_shape[-1]
+        H, W = observation_shape[0], observation_shape[1]
 
-        # Spatial CNN
-        self.spatial = SpatialCNN(in_channels=embed_dim, out_channels=32)
+        # ResNet-like structure
+        self.stage1 = nn.Sequential(
+            ResidualBlock(C, C, stride=1),
+            ResidualBlock(C, C, stride=1)
+        )
 
-        # Q-network
-        self.q_network = nn.Sequential(
-            nn.Conv2d(32, 3, kernel_size=1),
-            nn.Flatten(),
-            nn.Linear(height*width*3, hidden_dim),
+        self.stage2 = nn.Sequential(
+            ResidualBlock(C, C*2, stride=2),
+            ResidualBlock(C*2, C*2, stride=1)
+        )
+
+        self.stage3 = nn.Sequential(
+            ResidualBlock(C*2, C*4, stride=2),
+            ResidualBlock(C*4, C*4, stride=1)
+        )
+
+        self.upsample = nn.Upsample(size=(H, W), mode='bilinear', align_corners=False)
+
+        with torch.no_grad():
+            dummy_input = torch.randn(*observation_shape).permute(2,0,1).unsqueeze(0)
+            x = self.stage1(dummy_input)
+            x = self.stage2(x)
+            x = self.stage3(x)
+            x = self.upsample(x)
+            flatten_dim = x.view(1, -1).shape[1]
+
+        self.network = nn.Sequential(
+            nn.Linear(flatten_dim, 120),
             nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, action_space_size)
+            nn.Linear(120, 84),
+            nn.ReLU(),
+            nn.Linear(84, action_shape),
         )
 
     def forward(self, obs):
         # obs: (B,H,W,C)
-        obs = obs.permute(0,3,1,2).contiguous()  # (B,C,H,W)
-        spatial_features = self.spatial(obs)  # (B,32,H,W)
-        q_values = self.q_network(spatial_features)
-        return q_values
+        obs = obs.permute(0,3,1,2).contiguous() # (B,C,H,W)
+        x = self.stage1(obs)
+        x = self.stage2(x)
+        x = self.stage3(x)
+        x = self.upsample(x)
+        x = x.reshape(x.shape[0], -1)
+        return self.network(x)
 
     def select_action(self, obs, eval_mode=False):
         if len(obs.shape) == 3:
-            obs = obs.unsqueeze(0)  # (1,H,W,C)
+            obs = obs.unsqueeze(0)
         if not eval_mode and random.random() < self.epsilon:
-            return random.randint(0, self.action_space_size - 1)
+            return random.randint(0, self.action_shape - 1)
         with torch.no_grad():
-            q_values = self.forward(obs)
+            q_values = self(obs)
         return torch.argmax(q_values, dim=-1).item()
 
     def training_step(self, batch, batch_idx):
         states, actions, rewards, next_states, dones = batch
-        # states['blue']: (B,H,W,C)
-        blue_obs = states
-        next_blue_obs = next_states
-        actions = actions
-        rewards = rewards
-        dones = dones
-
-        q_values = self.forward(blue_obs)
+        blue_obs = states['blue']
+        next_blue_obs = next_states['blue']
+        q_values = self(blue_obs)
         with torch.no_grad():
-            q_values_next = self.forward(next_blue_obs)
+            q_values_next = self(next_blue_obs)
         max_next_q = q_values_next.max(dim=1)[0]
         target = rewards + 0.9 * max_next_q * (1 - dones)
 
         q_values_current = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)
         loss = nn.MSELoss()(q_values_current, target)
-        self.log('train_loss', loss)
+        self.log('train_loss', loss, on_step=True, on_epoch=True)
         return loss
 
     def configure_optimizers(self):

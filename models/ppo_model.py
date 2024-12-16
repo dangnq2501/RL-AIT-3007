@@ -1,6 +1,7 @@
 import pytorch_lightning as pl
 import torch.optim as optim
 import torch.nn as nn
+import torch
 class PPOActorCriticConv(nn.Module):
     def __init__(self, input_channels, input_size, action_space_size):
         super(PPOActorCriticConv, self).__init__()
@@ -96,3 +97,21 @@ class PPOAgentWithLightning(pl.LightningModule):
 
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=self.lr)
+from torch.utils.data import Dataset
+
+class RLReplayDataset(Dataset):
+    def __init__(self, buffer):
+        self.buffer = buffer
+
+    def __len__(self):
+        return len(self.buffer)
+
+    def __getitem__(self, idx):
+        state, action, reward, next_state, done, old_policy = self.buffer[idx]
+        return (
+            torch.tensor(state, dtype=torch.float32).permute(2, 0, 1),  # (channels, height, width)
+            torch.tensor(action, dtype=torch.long),
+            torch.tensor(reward, dtype=torch.float32),
+            torch.tensor(done, dtype=torch.float32),
+            torch.tensor(old_policy, dtype=torch.float32)
+        )

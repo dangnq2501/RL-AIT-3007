@@ -1,9 +1,10 @@
 from magent2.environments import battle_v4
 from models.torch_model import QNetwork
+from models.final_torch_model import QNetwork as FinalQNetwork
 from models.functional_model import FunctionalPolicyAgent
 import torch
 import numpy as np
-from models.kaggle_notebook import FunctionalPolicyAgent as BattleAgent
+
 try:
     from tqdm import tqdm
 except ImportError:
@@ -14,7 +15,22 @@ def eval():
     max_cycles = 300
     env = battle_v4.env(map_size=45, max_cycles=max_cycles)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-
+    action_space_size = 21  
+    input_dim = 13 * 13 * 5
+    input_channels = 5
+    input_size = 13
+    f_agent = FunctionalPolicyAgent(action_space_size, embed_dim=5, height=13, width=13)
+    f_agent.load_state_dict(
+        torch.load("blue_agent.pth", weights_only=True, map_location="cpu")
+    )
+    f_agent.to(device)
+    f_agent.eval()
+    
+    def functional_policy(env, agent, obs):
+        obs_tensor = torch.tensor(obs, dtype=torch.float32)
+        action = f_agent.select_action(obs_tensor)
+        return action
+    
     def random_policy(env, agent, obs):
         return env.action_space(agent).sample()
 
@@ -25,21 +41,15 @@ def eval():
         torch.load("red.pt", weights_only=True, map_location="cpu")
     )
     q_network.to(device)
-    action_space_size = 21  
-    input_dim = 13 * 13 * 5
-    f_agent = BattleAgent(action_space_size)
-    f_agent.load_state_dict(
-        torch.load("blue_trained_agent.pth", weights_only=True, map_location="cpu")
+
+    final_q_network = FinalQNetwork(
+        env.observation_space("red_0").shape, env.action_space("red_0").n
     )
-    f_agent.to(device)
-    f_agent.eval()
-    
-    def functional_policy(env, agent, obs):
-        observation_tensor = torch.tensor(obs, dtype=torch.float32)
-        
-        action = f_agent.select_action(observation_tensor, eval_mode=True)
-        return action
-    
+    final_q_network.load_state_dict(
+        torch.load("red_final.pt", weights_only=True, map_location="cpu")
+    )
+    final_q_network.to(device)
+
     def pretrain_policy(env, agent, obs):
         observation = (
             torch.Tensor(obs).float().permute([2, 0, 1]).unsqueeze(0).to(device)
@@ -48,45 +58,38 @@ def eval():
             q_values = q_network(observation)
         return torch.argmax(q_values, dim=1).cpu().numpy()[0]
 
+    def final_pretrain_policy(env, agent, obs):
+        observation = (
+            torch.Tensor(obs).float().permute([2, 0, 1]).unsqueeze(0).to(device)
+        )
+        with torch.no_grad():
+            q_values = final_q_network(observation)
+        return torch.argmax(q_values, dim=1).cpu().numpy()[0]
+
     def run_eval(env, red_policy, blue_policy, n_episode: int = 100):
         red_win, blue_win = [], []
         red_tot_rw, blue_tot_rw = [], []
         n_agent_each_team = len(env.env.action_spaces) // 2
-        cnt = 0
+
         for _ in tqdm(range(n_episode)):
             env.reset()
-            n_dead = {"red": 0, "blue": 0}
+            n_kill = {"red": 0, "blue": 0}
             red_reward, blue_reward = 0, 0
-            who_loses = None
-            blue_agents = [an for an in env.agents if an.startswith("blue")]
-            red_agents = [an for an in env.agents if an.startswith("red")]
-            agent_alive = {an: True for an in env.agents}
 
             for agent in env.agent_iter():
                 observation, reward, termination, truncation, info = env.last()
                 agent_team = agent.split("_")[0]
+
+                n_kill[agent_team] += (
+                    reward > 4.5
+                )  # This assumes default reward settups
                 if agent_team == "red":
                     red_reward += reward
                 else:
                     blue_reward += reward
 
-                if env.unwrapped.frames >= max_cycles and who_loses is None:
-                    who_loses = "red" if n_dead["red"] > n_dead["blue"] else "draw"
-                    who_loses = "blue" if n_dead["red"] < n_dead["blue"] else who_loses
-
-                if termination:
-                    agent_alive[agent] = False
-
                 if termination or truncation:
                     action = None  # this agent has died
-                    n_dead[agent_team] = n_dead[agent_team] + 1
-
-                    if (
-                        n_dead[agent_team] == n_agent_each_team
-                        and who_loses
-                        is None  # all agents are terminated at the end of episodes
-                    ):
-                        who_loses = agent_team
                 else:
                     if agent_team == "red":
                         action = red_policy(env, agent, observation)
@@ -94,10 +97,11 @@ def eval():
                         action = blue_policy(env, agent, observation)
 
                 env.step(action)
-            blue_alive_count = sum(agent_alive[an] for an in blue_agents)
-            red_alive_count = sum(agent_alive[an] for an in red_agents)
-            red_win.append(blue_alive_count < red_alive_count)
-            blue_win.append(blue_alive_count > red_alive_count)
+
+            who_wins = "red" if n_kill["red"] >= n_kill["blue"] + 5 else "draw"
+            who_wins = "blue" if n_kill["red"] + 5 <= n_kill["blue"] else who_wins
+            red_win.append(who_wins == "red")
+            blue_win.append(who_wins == "blue")
 
             red_tot_rw.append(red_reward / n_agent_each_team)
             blue_tot_rw.append(blue_reward / n_agent_each_team)
@@ -122,6 +126,17 @@ def eval():
     print(
         run_eval(
             env=env, red_policy=pretrain_policy, blue_policy=functional_policy, n_episode=30
+        )
+    )
+    print("=" * 20)
+
+    print("Eval with final trained policy")
+    print(
+        run_eval(
+            env=env,
+            red_policy=final_pretrain_policy,
+            blue_policy=functional_policy,
+            n_episode=30,
         )
     )
     print("=" * 20)
