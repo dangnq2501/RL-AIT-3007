@@ -110,7 +110,7 @@ def eval():
             cnt += 1
             height, width, _ = frames[0].shape
             out = cv2.VideoWriter(
-                os.path.join("video", f"pretrained_{cnt}.mp4"),
+                os.path.join("video", f"random_{cnt}.mp4"),
                 cv2.VideoWriter_fourcc(*"mp4v"),
                 fps,
                 (width, height),
