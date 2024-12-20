@@ -25,7 +25,7 @@ pip install -r requirements.txt
 ```
 
 ## Demos
-See `main.py` for a starter code.
+See `final_training.py` for a training.
 
 ## Evaluation
 Refer to `eval.py` for the evaluation code, you might want to modify it with your specific codebase.
