@@ -21,20 +21,28 @@ def eval():
 
     def random_policy(env, agent, obs):
         return env.action_space(agent).sample()
-    
-    q_network = FinalQNetwork(
+
+    q_network = QNetwork(
         env.observation_space("red_0").shape, env.action_space("red_0").n
     )
     q_network.load_state_dict(
-        torch.load("parameters/red_final.pt", weights_only=True, map_location="cpu")
+        torch.load("parameters/red.pt", weights_only=True, map_location="cpu")
     )
     q_network.to(device)
-    q_network.eval()
+
+    final_q_network = FinalQNetwork(
+        env.observation_space("red_0").shape, env.action_space("red_0").n
+    )
+    final_q_network.load_state_dict(
+        torch.load("parameters/red_final.pt", weights_only=True, map_location="cpu")
+    )
+    final_q_network.to(device)
+    final_q_network.eval()
     action_space_size = 21  
 
     f_agent = FunctionalPolicyAgent(action_space_size, embed_dim=5, height=13, width=13)
     f_agent.load_state_dict(
-        torch.load("parameters/blue_agent_18.pth", weights_only=True, map_location="cpu")
+        torch.load("parameters/final_blue_agent.pth", weights_only=True, map_location="cpu")
     )
     f_agent.to(device)
     f_agent.eval()
@@ -43,7 +51,7 @@ def eval():
             torch.Tensor(obs).float().permute([2, 0, 1]).unsqueeze(0).to(device)
         )
         with torch.no_grad():
-            q_values = q_network(observation)
+            q_values = final_q_network(observation)
         return torch.argmax(q_values, dim=1).cpu().numpy()[0]
 
     def functional_policy(env, agent, obs):
@@ -64,7 +72,7 @@ def eval():
         red_win, blue_win = [], []
         red_tot_rw, blue_tot_rw = [], []
         n_agent_each_team = len(env.env.action_spaces) // 2
-        fps = 35
+        fps = 25
         cnt = 0
         for _ in tqdm(range(n_episode)):
             env.reset()
@@ -96,13 +104,13 @@ def eval():
                 if agent == "red_0":
                     frames.append(env.render())
                     idx += 1
-                    print(f"Cycle id: {idx}")
-                    print(f"Red: {n_kill["red"]} vs Blue: {n_kill["blue"]}")
+                    # print(f"Cycle id: {idx}")
+                    # print(f"Red: {n_kill["red"]} vs Blue: {n_kill["blue"]}")
             # print(len(frames))
             cnt += 1
             height, width, _ = frames[0].shape
             out = cv2.VideoWriter(
-                os.path.join("video", f"test_18_{cnt}.mp4"),
+                os.path.join("video", f"pretrained_{cnt}.mp4"),
                 cv2.VideoWriter_fourcc(*"mp4v"),
                 fps,
                 (width, height),
@@ -132,7 +140,7 @@ def eval():
     print("Eval with final policy")
     print(
         run_eval(
-            env=env, red_policy=final_pretrain_policy, blue_policy=functional_policy, n_episode=10
+            env=env, red_policy=random_policy, blue_policy=functional_policy, n_episode=10
         )
     )
     print("=" * 20)
