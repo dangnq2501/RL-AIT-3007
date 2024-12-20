@@ -10,8 +10,9 @@ Your agent's performance should be evaluated based on reward and win rate agains
 
 
 <p align="center">
-  <img src="assets/random.gif" width="300" alt="random agent" />
-  <img src="assets/pretrained.gif" width="300" alt="pretrained agent" />
+  <img src="assets/my_random.gif" width="300" alt="random agent"  title="Against Random Agent"/>
+  <img src="assets/my_pretrained.gif" width="300" alt="Against Pretrained Agent" />
+  <img src="assets/my_final.gif" width="300" alt="Against Final Agent" />
 </p>
 
 See `video` folder for a demo of how each type of opponent behaves.
