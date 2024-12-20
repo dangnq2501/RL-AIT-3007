@@ -4,9 +4,22 @@ In this final project, you will develop and train a reinforcement learning (RL) 
 
 1. Random Agents: Agents that take random actions in the environment.
 2. A Pretrained Agent: A pretrained agent provided in the repository.
-3. A Final Agent: A stronger pretrained agent, which will be released in the final week of the course before the deadline.
+3. A Final Agent: A stronger pretrained agent
 
-Your agent's performance should be evaluated based on reward and win rate against each of these models. You should control *blue* agents when evaluating.
+### Agent Training with Functional Policy and Hyperparameter Reward
+
+#### Functional Policy
+The agent's decision-making process is based on a **Functional Policy**, which uses mathematical functions or flexible models to map observations to actions. This approach allows the agent to:
+
+- **Adapt to Complex Environments**: Quickly adjust to dynamic and unpredictable scenarios.
+- **Optimize Decision-Making**: Enhance performance by leveraging sophisticated policy structures.
+
+#### Hyperparameter Reward Optimization
+The reward system for the agent is tuned through hyperparameter optimization to guide learning effectively. Key aspects include:
+
+- **step_reward**: reward after every step.
+- **attack_opponent_reward**: reward added for attacking an opponent.
+- **dead_penalty**: reward given to an agent when it gets eliminated (dies).
 
 
 <p align="center">
@@ -15,8 +28,7 @@ Your agent's performance should be evaluated based on reward and win rate agains
   <img src="assets/my_final.gif" width="300" alt="Against Final Agent" />
 </p>
 
-See `video` folder for a demo of how each type of opponent behaves.
-Checkout a [Colab notebook](https://colab.research.google.com/drive/1qmx_NCmzPlc-atWqexn2WueqMKB_ZTxc?usp=sharing) for running this demo.
+
 
 ## Installation
 clone this repo and install with
