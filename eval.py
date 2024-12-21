@@ -11,7 +11,7 @@ except ImportError:
     tqdm = lambda x, *args, **kwargs: x  # Fallback: tqdm becomes a no-op
 
 
-def eval():
+def eval(blue_agent_path="parameters/final_blue_agent.pth"):
     max_cycles = 300
     env = battle_v4.env(map_size=45, max_cycles=max_cycles)
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -143,4 +143,5 @@ def eval():
 
 
 if __name__ == "__main__":
-    eval()
+    blue_agent_path = "blue_agent.pth"
+    eval(blue_agent_path=blue_agent_path)
