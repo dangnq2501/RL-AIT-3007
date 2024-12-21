@@ -6,14 +6,66 @@ This repository focuses on building, training, and evaluating intelligent agents
 We implement and evaluate the following approaches for training agents:
 
 1. Deep Q-Learning (DQL): A model trained against random agent.
+
+   Train code: https://github.com/dangnq2501/RL-AIT-3017/blob/main/deepQ_random/train_random_ver3.ipynb
+  
+   Evaluate code: https://github.com/dangnq2501/RL-AIT-3017/blob/main/deepQ_random/eval.ipynb 
 2. Self-Play Deep Q-Learning: An enhanced DQL model leveraging self-play.  **(BEST)**
+   
+   Train code: https://github.com/dangnq2501/RL-AIT-3017/blob/main/final_training.ipynb
+
+   Evaluate code: https://github.com/dangnq2501/RL-AIT-3017/blob/main/eval.py
 3. Proximal Policy Optimization (PPO): A deep neural network trained with PPO.
+
+   https://github.com/dangnq2501/RL-AIT-3007/blob/main/ppo_training/ppo_training.ipynb
+   
 
 ## Evaluation Strategy
 Trained agents are evaluated against three types of opponents:
 1. Random Agents: Agents that take random actions in the environment.
 2. A Pretrained Agent: A pretrained agent provided in the repository.
 3. A Final Agent: A stronger pretrained agent
+
+## How to run 
+### Clone the repository
+```bash
+   git clone [https://github.com/dangnq2501/RL-AIT-3007.git](https://github.com/dangnq2501/RL-AIT-3007.git)
+```
+### Install necessary library
+```bash
+pip install -r requirements.txt
+```
+
+### Run our best model - Self-play Deep Q Model :
+* First, run training code:
+  ```
+  final_training.ipynb
+  ```
+* Weight of the model will be saved at path: blue_agent.pth
+* Run the evaluate file (the weight path of the model has already been put in this file, so you do not have to change anything in the code)
+  ```
+  eval.py
+  ```
+
+### Run Deep Q Model
+Train code: https://github.com/dangnq2501/RL-AIT-3017/blob/main/deepQ_random/train_random_ver3.ipynb
+```
+deepQ_random/train_random_ver3.ipynb
+```
+  
+Evaluate code: https://github.com/dangnq2501/RL-AIT-3017/blob/main/deepQ_random/eval.ipynb
+```
+deepQ_random/eval.ipynb
+```
+
+### PPO
+Run the following file for training:
+```
+ppo_training/ppo_training.ipynb
+```
+
+
+
 
 ## Agent Training with Functional Policy and Hyperparameter Reward
 
@@ -146,21 +198,6 @@ The reward system for the agent is tuned through hyperparameter optimization to 
     </tr>
   </table>
 </p>
-
-
-
-
-## Installation
-clone this repo and install with
-```
-pip install -r requirements.txt
-```
-
-## Demos
-See `final_training.py` for a training.
-
-## Evaluation
-Refer to `eval.py` for the evaluation code, you might want to modify it with your specific codebase.
 
 ## References
 
