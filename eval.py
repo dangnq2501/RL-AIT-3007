@@ -21,7 +21,7 @@ def eval():
     input_size = 13
     f_agent = FunctionalPolicyAgent(action_space_size, embed_dim=5, height=13, width=13)
     f_agent.load_state_dict(
-        torch.load("parameters/final_blue_agent.pth", weights_only=True, map_location="cpu")
+        torch.load("parameters/blue_agent.pth", weights_only=True, map_location="cpu")
     )
     f_agent.to(device)
     f_agent.eval()
